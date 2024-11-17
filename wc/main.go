@@ -3,10 +3,12 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"strings"
+	"unicode"
 )
 
 var (
@@ -17,10 +19,9 @@ var (
 
 func main() {
 	argsWithoutProg := os.Args[1:]
-	log.Printf("args without program: %s\n", &argsWithoutProg)
 
 	if len(argsWithoutProg) > 4 {
-		log.Fatal("Too many arguments")
+		fmt.Printf("Too many arguments")
 		os.Exit(1)
 	}
 	filename := argsWithoutProg[len(argsWithoutProg)-1]
@@ -28,7 +29,6 @@ func main() {
 		log.Fatal("Missing file name")
 		os.Exit(1)
 	}
-	log.Printf("filename: %s\n", filename)
 
 	flag.Parse()
 
@@ -37,13 +37,21 @@ func main() {
 		*countLines = true
 		*countWords = true
 	}
-	log.Printf("count bytes: %v\ncount lines: %v\ncount words: %v\n", *countBytes, *countLines, *countWords)
 
-	byteCount, _, _, err := count(countBytes, countLines, countWords, filename)
+	byteCount, lineCount, wordCount, err := count(countBytes, countLines, countWords, filename)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("	%d	%s\n", byteCount, filename)
+	if *countLines {
+		fmt.Printf("  %d", lineCount)
+	}
+	if *countWords {
+		fmt.Printf("  %d", wordCount)
+	}
+	if *countBytes {
+		fmt.Printf("  %d", byteCount)
+	}
+	fmt.Printf(" %s\n", filename)
 }
 
 func count(countBytes *bool, countLines *bool, countWords *bool, filename string) (int, int, int, error) {
@@ -53,16 +61,46 @@ func count(countBytes *bool, countLines *bool, countWords *bool, filename string
 		log.Fatal(err)
 	}
 	reader := bufio.NewReader(fp)
+	var previousByte byte
 	byteCount := 0
-	if *countBytes {
-		for {
-			_, err := reader.ReadByte()
-			if err != nil && err == io.EOF {
-				break
-			}
+	lineCount := 0
+	wordCount := 0
+	for {
+		currentByte, err := reader.ReadByte()
+		if err != nil && err == io.EOF {
+			break
+		}
+		if *countBytes {
 			byteCount++
 		}
+		if *countLines {
+			foundLineBreak := isLineBreak(currentByte, previousByte)
+			if foundLineBreak {
+				lineCount++
+			}
+		}
+		if *countWords {
+			if !unicode.IsSpace(rune(previousByte)) && unicode.IsSpace(rune(currentByte)) {
+				wordCount++
+			}
+		}
+
+		previousByte = currentByte
 	}
 
-	return byteCount, 0, 0, err
+	return byteCount, lineCount, wordCount, err
+}
+
+func isLineBreak(currentByte byte, previousByte byte) bool {
+	// don't double-count if we are dealing with CRLF
+	if previousByte == '\r' && currentByte == '\n' {
+		return true
+	}
+	if previousByte != '\r' && currentByte == '\n' {
+		return true
+	}
+	if previousByte == '\r' && currentByte != '\n' {
+		return true
+	}
+	return false
 }
